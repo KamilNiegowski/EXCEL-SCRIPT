@@ -47,8 +47,9 @@ function main(workbook: ExcelScript.Workbook) {
   sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
   sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
 
-  // Zapisz unikalne porty w arkuszu Services
-  const servicesData = Array.from(uniqueServices).map((service, index) => [index + 1, service]);
+  // Zapisz unikalne porty w arkuszu Services, zaczynając od ID 237
+  const startServiceID = 237; // ID początkowe
+  const servicesData = Array.from(uniqueServices).map((service, index) => [startServiceID + index, service]);
   sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
   sheetServices.getRange(`A2:B${servicesData.length + 1}`).setValues(servicesData);
 
@@ -95,5 +96,5 @@ function getIDForIP(ip: string, serversData: (string | number)[][]): number {
 // Funkcja do uzyskiwania ID dla usługi
 function getIDForService(service: string, servicesData: (string | number)[][]): number {
   const serviceIndex = servicesData.findIndex(row => row[1] === service);
-  return serviceIndex >= 0 ? serviceIndex + 1 : 0; // Zwraca ID lub 0, jeśli nie znaleziono
+  return serviceIndex >= 0 ? serviceIndex + 237 : 0; // Zwraca ID lub 0, jeśli nie znaleziono
 }
