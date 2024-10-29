@@ -49,8 +49,11 @@ function main(workbook: ExcelScript.Workbook) {
 
   // Zapis unikalnych portów w arkuszu Services, zaczynając od określonego wiersza (np. 237)
   const startRowForServices = 237; // Określony wiersz, od którego zaczynamy dodawanie
+
+  // Ustalanie najnowszego ID w arkuszu Services
+  const lastServiceID = getLastServiceID(sheetServices);
   const servicesData = Array.from(uniqueServices).map((service, index) => {
-    return [startRowForServices + index, service]; // ID oparte na ustalonym wierszu
+    return [lastServiceID + index + 1, service]; // ID oparte na ostatnim ID
   });
 
   // Ustaw nagłówki, jeśli arkusz jest pusty
@@ -58,7 +61,7 @@ function main(workbook: ExcelScript.Workbook) {
     sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
   }
 
-  // Zapis do arkusza Services, zaczynając od określonego wiersza
+  // Zapis do arkusza Services
   sheetServices.getRange(`A${startRowForServices}:B${startRowForServices + servicesData.length - 1}`).setValues(servicesData);
 
   // Zasil arkusz Connections
@@ -77,6 +80,16 @@ function main(workbook: ExcelScript.Workbook) {
 
   sheetConnections.getRange("A1:E1").setValues([["ID", "source IDs", "destination IDs", "service IDs", "line"]]);
   sheetConnections.getRange(`A2:E${connectionsData.length + 1}`).setValues(connectionsData);
+}
+
+// Funkcja do uzyskiwania ostatniego ID w arkuszu Services
+function getLastServiceID(sheet: ExcelScript.Worksheet): number {
+  const lastRow = sheet.getUsedRange().getLastRow();
+  if (lastRow < 2) {
+    return 0; // Brak danych, więc zwróć 0
+  }
+  const lastServiceID = sheet.getRange(`A${lastRow}`).getValue() as number;
+  return lastServiceID;
 }
 
 // Funkcja formatowania szczegółów IP
