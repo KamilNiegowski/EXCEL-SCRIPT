@@ -45,13 +45,13 @@ function main(workbook: ExcelScript.Workbook) {
   uniqueServers.forEach((lines, ip) => {
       const details = formatIPDetails(ip);
       lines.forEach(line => {
-          serversData.push([getNextID(sheetServers), ip, details, line]);
+          serversData.push([serversData.length + 1, ip, details, line]);
       });
   });
-  if (serversData.length > 0) {
+
       sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
       sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
-  }
+
 
   // Sprawdzenie ostatniego ID w arkuszu Services
   const lastServiceID = getLastID(sheetServices);
