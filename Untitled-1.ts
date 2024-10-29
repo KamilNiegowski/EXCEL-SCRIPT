@@ -8,81 +8,62 @@ function main(workbook: ExcelScript.Workbook) {
   const actualRuleData = sheetActualRule.getUsedRange().getValues();
 
   // Zbiór unikalnych adresów IP i portów
-  const uniqueServers = new Map<string, Set<string>>(); // Klucz: IP/nazwa, wartość: Zbiór linii
-  const uniqueServices = new Map<string, number>(); // Klucz: usługa (port), wartość: unikalne ID
+  const uniqueServers = new Map<string, Set<string>>(); // key: IP/name, value: Set of lines
+  const uniqueServices = new Set<string>();
 
   // Przetwarzanie danych ACTUAL RULE
   for (let i = 1; i < actualRuleData.length; i++) {
-      const sourceIPs = (actualRuleData[i][0] as string).split("\n");
-      const destinationIPs = (actualRuleData[i][1] as string).split("\n");
-      const services = (actualRuleData[i][2] as string).split("\n");
-      const line = actualRuleData[i][3] as string;
+    const sourceIPs = (actualRuleData[i][0] as string).split("\n");
+    const destinationIPs = (actualRuleData[i][1] as string).split("\n");
+    const services = (actualRuleData[i][2] as string).split("\n");
+    const line = actualRuleData[i][3] as string;
 
-      sourceIPs.forEach(ip => {
-          if (!uniqueServers.has(ip)) {
-              uniqueServers.set(ip, new Set());
-          }
-          uniqueServers.get(ip)?.add(line);
-      });
+    sourceIPs.forEach(ip => {
+      if (!uniqueServers.has(ip)) {
+        uniqueServers.set(ip, new Set());
+      }
+      uniqueServers.get(ip)?.add(line);
+    });
 
-      destinationIPs.forEach(ip => {
-          if (!uniqueServers.has(ip)) {
-              uniqueServers.set(ip, new Set());
-          }
-          uniqueServers.get(ip)?.add(line);
-      });
+    destinationIPs.forEach(ip => {
+      if (!uniqueServers.has(ip)) {
+        uniqueServers.set(ip, new Set());
+      }
+      uniqueServers.get(ip)?.add(line);
+    });
 
-      services.forEach(service => {
-          const lowerService = service.toLowerCase();
-          if (!uniqueServices.has(lowerService)) {
-              uniqueServices.set(lowerService, 0); // Zainicjuj usługę, jeśli jeszcze jej nie ma
-          }
-      });
+    services.forEach(service => uniqueServices.add(service));
   }
 
-  // Uzupełnianie arkusza Servers
+  // Zapisz unikalne adresy w arkuszu Servers
   const serversData: (string | number)[][] = [];
   uniqueServers.forEach((lines, ip) => {
-      const details = formatIPDetails(ip);
-      lines.forEach(line => {
-          serversData.push([serversData.length + 1, ip, details, line]);
-      });
+    const details = formatIPDetails(ip);
+    lines.forEach(line => {
+      serversData.push([serversData.length + 1, ip, details, line]);
+    });
   });
 
-      sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
-      sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
+  sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
+  sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
 
+  // Zapisz unikalne porty w arkuszu Services
+  const servicesData = Array.from(uniqueServices).map((service, index) => [index + 1, service]);
+  sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
+  sheetServices.getRange(`A2:B${servicesData.length + 1}`).setValues(servicesData);
 
-  // Sprawdzenie ostatniego ID w arkuszu Services
-  const lastServiceID = getLastID(sheetServices);
-  const existingServices = getExistingEntries(sheetServices);
-  const servicesData: (string | number)[][] = [];
-  let nextServiceID = lastServiceID + 1; // Rozpocznij od najwyższego ID + 1
-
-  // Dodaj nowe usługi do arkusza Services
-  uniqueServices.forEach((_, service) => {
-      if (!existingServices.has(service.toLowerCase())) {
-          servicesData.push([nextServiceID++, service]);
-      }
-  });
-
-  if (servicesData.length > 0) {
-      sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
-      sheetServices.getRange(`A${lastServiceID + 2}:B${lastServiceID + servicesData.length + 1}`).setValues(servicesData);
-  }
-
-  // Uzupełnianie arkusza Connections
+  // Zasil arkusz Connections
   const connectionsData = actualRuleData.slice(1).map((row, index) => {
-      const sourceIDs = Array.from(row[0].split("\n").map(ip => getIDForIP(ip, serversData)));
-      const destinationIDs = Array.from(row[1].split("\n").map(ip => getIDForIP(ip, serversData)));
-      const serviceIDs = Array.from(row[2].split("\n").map(service => getIDForService(service, servicesData)));
-      return [
-          index + 1,
-          sourceIDs.join(", "),
-          destinationIDs.join(", "),
-          serviceIDs.join(", "),
-          row[3] // Line
-      ];
+    const sourceIDs = Array.from(row[0].split("\n").map(ip => getIDForIP(ip, serversData)));
+    const destinationIDs = Array.from(row[1].split("\n").map(ip => getIDForIP(ip, serversData)));
+    const serviceIDs = Array.from(row[2].split("\n").map(service => getIDForService(service, servicesData)));
+    return [
+      index + 1,
+      sourceIDs.join(", "),
+      destinationIDs.join(", "),
+      serviceIDs.join(", "),
+      row[3] // Line
+    ];
   });
 
   sheetConnections.getRange("A1:E1").setValues([["ID", "source IDs", "destination IDs", "service IDs", "line"]]);
@@ -92,11 +73,11 @@ function main(workbook: ExcelScript.Workbook) {
 // Funkcja formatowania szczegółów IP
 function formatIPDetails(ip: string): string {
   if (ip.startsWith("net_")) {
-      return ip.slice(4).replace(/_/g, "/");
+    return ip.slice(4).replace(/_/g, "/");
   } else if (isIPAddress(ip)) {
-      return ip;
+    return ip;
   }
-  return ip;
+  return ip; // Zwraca IP w przypadku gdy nie jest to poprawny format
 }
 
 // Funkcja sprawdzająca, czy ciąg znaków to adres IP
@@ -107,50 +88,12 @@ function isIPAddress(ip: string): boolean {
 
 // Funkcja do uzyskiwania ID dla adresu IP
 function getIDForIP(ip: string, serversData: (string | number)[][]): number {
-  const serverIndex = serversData.findIndex(row => row[1].toLowerCase() === ip.toLowerCase());
-  return serverIndex >= 0 ? serversData[serverIndex][0] as number : 0;
+  const serverIndex = serversData.findIndex(row => row[1] === ip);
+  return serverIndex >= 0 ? serverIndex + 1 : 0; // Zwraca ID lub 0, jeśli nie znaleziono
 }
 
 // Funkcja do uzyskiwania ID dla usługi
 function getIDForService(service: string, servicesData: (string | number)[][]): number {
-  const serviceIndex = servicesData.findIndex(row => row[1].toLowerCase() === service.toLowerCase());
-  return serviceIndex >= 0 ? servicesData[serviceIndex][0] as number : 0;
-}
-
-// Funkcja do uzyskiwania następnego ID w arkuszu
-function getNextID(sheet: ExcelScript.Worksheet): number {
-  const usedRange = sheet.getUsedRange();
-  const lastRow = usedRange ? usedRange.getRowCount() : 0;
-
-  // Jeśli arkusz jest pusty, zacznij od 1
-  if (lastRow <= 1) return 1; // Zakłada, że pierwszy wiersz to nagłówki
-
-  // Sprawdź ostatnie ID w kolumnie A
-  let lastID = 0;
-  for (let i = 2; i <= lastRow; i++) { // Zaczynamy od 2, aby pominąć nagłówki
-      const idValue = sheet.getRange(`A${i}`).getValue();
-      if (typeof idValue === "number") {
-          lastID = Math.max(lastID, idValue); // Zapisz największe ID
-      }
-  }
-
-  return lastID + 1; // Zwróć następne ID
-}
-
-// Funkcja do pobierania ostatniego ID w arkuszu Services
-function getLastID(sheet: ExcelScript.Worksheet): number {
-  const usedRange = sheet.getUsedRange();
-  const lastRow = usedRange.getLastRow();
-  const lastID = sheet.getRange(`A${lastRow.getRowIndex() + 1}`).getValue() as number;
-  return isNaN(lastID) ? 0 : lastID;
-}
-
-// Funkcja do pobierania istniejących usług z arkusza
-function getExistingEntries(sheet: ExcelScript.Worksheet): Set<string> {
-  const entries = new Set<string>();
-  const data = sheet.getUsedRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-      entries.add((data[i][1] as string).toLowerCase());
-  }
-  return entries;
+  const serviceIndex = servicesData.findIndex(row => row[1] === service);
+  return serviceIndex >= 0 ? serviceIndex + 1 : 0; // Zwraca ID lub 0, jeśli nie znaleziono
 }
