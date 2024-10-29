@@ -1,143 +1,89 @@
 function main(workbook: ExcelScript.Workbook) {
-    const sheetActualRule = workbook.getWorksheet("ACTUAL RULE");
-    const sheetServers = workbook.getWorksheet("Servers") || workbook.addWorksheet("Servers");
-    const sheetServices = workbook.getWorksheet("Services") || workbook.addWorksheet("Services");
-    const sheetConnections = workbook.getWorksheet("Connections") || workbook.addWorksheet("Connections");
+  const sheetActualRule = workbook.getWorksheet("ACTUAL RULE");
+  const sheetServers = workbook.getWorksheet("Servers") || workbook.addWorksheet("Servers");
+  const sheetServices = workbook.getWorksheet("Services") || workbook.addWorksheet("Services");
+  const sheetConnections = workbook.getWorksheet("Connections") || workbook.addWorksheet("Connections");
 
-    // Pobranie danych z ACTUAL RULE
-    const actualRuleData = sheetActualRule.getUsedRange().getValues();
+  // Pobranie danych z ACTUAL RULE
+  const actualRuleData = sheetActualRule.getUsedRange().getValues();
 
-    // Zbiór unikalnych adresów IP i portów
-    const uniqueServers = new Map<string, Set<string>>(); // Klucz: IP/nazwa, wartość: Zbiór linii
-    const uniqueServices = new Map<string, number>(); // Klucz: usługa (port), wartość: unikalne ID
+  // Zbiór unikalnych adresów IP i portów
+  const uniqueSources = new Set<string>();
+  const uniqueDestinations = new Set<string>();
+  const uniqueServices = new Set<string>();
+  const lineInfoMap = new Map<string, string[]>(); // Map do przechowywania linii dla adresów IP
 
-    // Przetwarzanie danych ACTUAL RULE
-    for (let i = 1; i < actualRuleData.length; i++) {
-      const sourceIPs = (actualRuleData[i][0] as string).split("\n");
-      const destinationIPs = (actualRuleData[i][1] as string).split("\n");
-      const services = (actualRuleData[i][2] as string).split("\n");
-      const line = actualRuleData[i][3] as string;
+  // Przetwarzanie danych ACTUAL RULE
+  for (let i = 1; i < actualRuleData.length; i++) {
+    const sourceIPs = (actualRuleData[i][0] as string).split("\n");
+    const destinationIPs = (actualRuleData[i][1] as string).split("\n");
+    const services = (actualRuleData[i][2] as string).split("\n");
+    const line = actualRuleData[i][3] as string;
 
-      sourceIPs.forEach(ip => {
-        if (!uniqueServers.has(ip)) {
-          uniqueServers.set(ip, new Set());
-        }
-        uniqueServers.get(ip)?.add(line);
-      });
-
-      destinationIPs.forEach(ip => {
-        if (!uniqueServers.has(ip)) {
-          uniqueServers.set(ip, new Set());
-        }
-        uniqueServers.get(ip)?.add(line);
-      });
-
-      services.forEach(service => {
-        const lowerService = service.toLowerCase();
-        if (!uniqueServices.has(lowerService)) {
-          uniqueServices.set(lowerService, 0); // Zainicjuj usługę, jeśli jeszcze jej nie ma
-        }
-      });
-    }
-
-    // Uzupełnianie arkusza Servers
-    const serversData: (string | number)[][] = [];
-    uniqueServers.forEach((lines, ip) => {
-      const details = formatIPDetails(ip);
-      lines.forEach(line => {
-        serversData.push([getNextID(sheetServers), ip, details, line]);
-      });
-    });
-    if (serversData.length > 0) {
-      sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
-      sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
-    }
-
-    // Sprawdzenie ostatniego ID w arkuszu Services
-    const lastServiceID = getLastID(sheetServices);
-    const existingServices = getExistingEntries(sheetServices);
-    const servicesData: (string | number)[][] = [];
-    let nextServiceID = lastServiceID + 1;
-
-    // Dodaj nowe usługi do arkusza Services
-    uniqueServices.forEach((_, service) => {
-      if (!existingServices.has(service.toLowerCase())) {
-        servicesData.push([nextServiceID++, service]);
-      }
+    // Dodaj źródła i cele do unikalnych zbiorów oraz linii
+    sourceIPs.forEach(ip => {
+      uniqueSources.add(ip);
+      if (!lineInfoMap.has(ip)) lineInfoMap.set(ip, []);
+      lineInfoMap.get(ip)?.push(line);
     });
 
-    if (servicesData.length > 0) {
+    destinationIPs.forEach(ip => {
+      uniqueDestinations.add(ip);
+      if (!lineInfoMap.has(ip)) lineInfoMap.set(ip, []);
+      lineInfoMap.get(ip)?.push(line);
+    });
+
+    services.forEach(service => uniqueServices.add(service));
+  }
+
+  // Zapisz unikalne adresy w arkuszu Servers
+  const serversData = Array.from(lineInfoMap.entries()).flatMap(([ip, lines]) => {
+    const details = ip.startsWith("net_") ? ip.slice(4).replace(/_/g, "/") : ip; // Zamiana net_10.99.0.0_24 na 10.99.0.0/24
+    return lines.map((line, index) => [index + 1, ip, details, line]); // Dodaj linię dla każdego adresu
+  });
+
+  sheetServers.getRange("A1:D1").setValues([["id", "name", "details", "line"]]);
+  sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
+
+  // Zapisz unikalne porty w arkuszu Services
+  const lastServiceID = getLastID(sheetServices);
+  const servicesData: (string | number)[][] = [];
+  let nextServiceID = lastServiceID + 1;
+
+  uniqueServices.forEach((service) => {
+    servicesData.push([nextServiceID++, service]);
+  });
+
+  if (servicesData.length > 0) {
+    if (sheetServices.getUsedRange()?.getRowCount() === 0) {
       sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
-      sheetServices.getRange(`A${lastServiceID + 2}:B${lastServiceID + servicesData.length + 1}`).setValues(servicesData);
     }
-
-    // Uzupełnianie arkusza Connections
-    const connectionsData = actualRuleData.slice(1).map((row, index) => {
-      const sourceIDs = Array.from(row[0].split("\n").map(ip => getIDForIP(ip, serversData)));
-      const destinationIDs = Array.from(row[1].split("\n").map(ip => getIDForIP(ip, serversData)));
-      const serviceIDs = Array.from(row[2].split("\n").map(service => getIDForService(service, servicesData)));
-      return [
-        index + 1,
-        sourceIDs.join(", "),
-        destinationIDs.join(", "),
-        serviceIDs.join(", "),
-        row[3] // Line
-      ];
-    });
-
-    sheetConnections.getRange("A1:E1").setValues([["ID", "source IDs", "destination IDs", "service IDs", "line"]]);
-    sheetConnections.getRange(`A2:E${connectionsData.length + 1}`).setValues(connectionsData);
+    sheetServices.getRange(`A${lastServiceID + 2}:B${lastServiceID + servicesData.length + 1}`).setValues(servicesData);
   }
 
-  // Funkcja formatowania szczegółów IP
-  function formatIPDetails(ip: string): string {
-    if (ip.startsWith("net_")) {
-      return ip.slice(4).replace(/_/g, "/");
-    } else if (isIPAddress(ip)) {
-      return ip;
-    }
-    return ip;
-  }
+  // Zasil arkusz Connections
+  const connectionsData = actualRuleData.slice(1).map((row, index) => [
+    index + 1,
+    row[0],  // Source
+    row[1],  // Destination
+    row[2],  // Service
+    row[3]   // Line
+  ]);
 
-  // Funkcja sprawdzająca, czy ciąg znaków to adres IP
-  function isIPAddress(ip: string): boolean {
-    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-    return ipPattern.test(ip);
-  }
+  sheetConnections.getRange("A1:E1").setValues([["id", "source", "destination", "service", "line"]]);
+  sheetConnections.getRange(`A2:E${connectionsData.length + 1}`).setValues(connectionsData);
+}
 
-  // Funkcja do uzyskiwania ID dla adresu IP
-  function getIDForIP(ip: string, serversData: (string | number)[][]): number {
-    const serverIndex = serversData.findIndex(row => row[1].toLowerCase() === ip.toLowerCase());
-    return serverIndex >= 0 ? serversData[serverIndex][0] as number : 0;
-  }
+// Funkcja sprawdzająca, czy ciąg znaków to adres IP
+function isIPAddress(ip: string): boolean {
+  const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  return ipPattern.test(ip);
+}
 
-  // Funkcja do uzyskiwania ID dla usługi
-  function getIDForService(service: string, servicesData: (string | number)[][]): number {
-    const serviceIndex = servicesData.findIndex(row => row[1].toLowerCase() === service.toLowerCase());
-    return serviceIndex >= 0 ? servicesData[serviceIndex][0] as number : 0;
-  }
-
-  // Funkcja do uzyskiwania następnego ID
-  function getNextID(sheet: ExcelScript.Worksheet): number {
-    const usedRange = sheet.getUsedRange();
-    const lastRow = usedRange.getLastRow();
-    return lastRow.getRowIndex() + 2;
-  }
-
-  // Funkcja do pobierania ostatniego ID w arkuszu Services
-  function getLastID(sheet: ExcelScript.Worksheet): number {
-    const usedRange = sheet.getUsedRange();
-    const lastRow = usedRange.getLastRow();
-    const lastID = sheet.getRange(`A${lastRow.getRowIndex() + 1}`).getValue() as number;
-    return isNaN(lastID) ? 0 : lastID;
-  }
-
-  // Funkcja do pobierania istniejących usług z arkusza
-  function getExistingEntries(sheet: ExcelScript.Worksheet): Set<string> {
-    const entries = new Set<string>();
-    const data = sheet.getUsedRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      entries.add((data[i][1] as string).toLowerCase());
-    }
-    return entries;
-  }
+// Funkcja do pobierania ostatniego ID w arkuszu
+function getLastID(sheet: ExcelScript.Worksheet): number {
+  const usedRange = sheet.getUsedRange();
+  if (!usedRange) return 0;
+  const values = usedRange.getValues();
+  return values.length > 1 ? Math.max(...values.slice(1).map(row => row[0] as number)) : 0;
+}
