@@ -47,9 +47,14 @@ function main(workbook: ExcelScript.Workbook) {
   sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
   sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
 
-  // Zapisz unikalne porty w arkuszu Services, zaczynając od wiersza 237
+  // Ustalanie ID i zapis unikalnych portów w arkuszu Services, zaczynając od wiersza 237
   const startServiceRow = 237; // Wiersz początkowy dla usług
-  const servicesData = Array.from(uniqueServices).map((service, index) => [startServiceRow + index, service]);
+  const lastServiceID = getLastServiceID(sheetServices); // Zdobądź ostatnie ID usług
+  const servicesData = Array.from(uniqueServices).map((service, index) => {
+    return [lastServiceID + index + 1, service]; // ID zaczynające się od ostatniego ID
+  });
+
+  // Zapis do arkusza Services
   sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
   sheetServices.getRange(`A${startServiceRow}:B${startServiceRow + servicesData.length - 1}`).setValues(servicesData);
 
@@ -69,6 +74,17 @@ function main(workbook: ExcelScript.Workbook) {
 
   sheetConnections.getRange("A1:E1").setValues([["ID", "source IDs", "destination IDs", "service IDs", "line"]]);
   sheetConnections.getRange(`A2:E${connectionsData.length + 1}`).setValues(connectionsData);
+}
+
+// Funkcja do uzyskiwania ostatniego ID usług
+function getLastServiceID(sheet: ExcelScript.Worksheet): number {
+  const usedRange = sheet.getUsedRange();
+  const lastRow = usedRange.getLastRow();
+  if (lastRow.getRowIndex() < 1) {
+    return 0; // Brak danych, zwróć 0
+  }
+  const lastID = sheet.getRange(`A${lastRow.getRowIndex() + 1}`).getValue() as number;
+  return isNaN(lastID) ? 0 : lastID; // Zwróć ostatnie ID lub 0
 }
 
 // Funkcja formatowania szczegółów IP
