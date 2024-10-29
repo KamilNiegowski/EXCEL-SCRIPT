@@ -47,17 +47,19 @@ function main(workbook: ExcelScript.Workbook) {
   sheetServers.getRange("A1:D1").setValues([["ID", "name", "details", "line"]]);
   sheetServers.getRange(`A2:D${serversData.length + 1}`).setValues(serversData);
 
-  // Ustalanie ostatniego wiersza dla usług
-  const lastServiceRow = getLastUsedRow(sheetServices);
-  const lastServiceID = lastServiceRow > 1 ? sheetServices.getRange(`A${lastServiceRow}`).getValue() as number : 0; // Ostatnie ID usług
-
-  // Zapis unikalnych portów w arkuszu Services, zaczynając od ostatniego wiersza
+  // Zapis unikalnych portów w arkuszu Services, zaczynając od określonego wiersza (np. 237)
+  const startRowForServices = 237; // Określony wiersz, od którego zaczynamy dodawanie
   const servicesData = Array.from(uniqueServices).map((service, index) => {
-    return [lastServiceID + index + 1, service]; // ID zaczynające się od ostatniego ID
+    return [startRowForServices + index, service]; // ID oparte na ustalonym wierszu
   });
 
-  // Zapis do arkusza Services
-  sheetServices.getRange(`A${lastServiceRow + 1}:B${lastServiceRow + servicesData.length}`).setValues(servicesData);
+  // Ustaw nagłówki, jeśli arkusz jest pusty
+  if (sheetServices.getUsedRange().getRowCount() === 0) {
+    sheetServices.getRange("A1:B1").setValues([["ID", "name"]]);
+  }
+
+  // Zapis do arkusza Services, zaczynając od określonego wiersza
+  sheetServices.getRange(`A${startRowForServices}:B${startRowForServices + servicesData.length - 1}`).setValues(servicesData);
 
   // Zasil arkusz Connections
   const connectionsData = actualRuleData.slice(1).map((row, index) => {
@@ -75,12 +77,6 @@ function main(workbook: ExcelScript.Workbook) {
 
   sheetConnections.getRange("A1:E1").setValues([["ID", "source IDs", "destination IDs", "service IDs", "line"]]);
   sheetConnections.getRange(`A2:E${connectionsData.length + 1}`).setValues(connectionsData);
-}
-
-// Funkcja do uzyskiwania ostatniego używanego wiersza
-function getLastUsedRow(sheet: ExcelScript.Worksheet): number {
-  const usedRange = sheet.getUsedRange();
-  return usedRange.getLastRow().getRowIndex() + 1; // Indeks wiersza + 1, aby uzyskać następny wiersz
 }
 
 // Funkcja formatowania szczegółów IP
